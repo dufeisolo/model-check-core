@@ -4,7 +4,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
-[![CI](https://img.shields.io/badge/CI-passing-brightgreen.svg)](.github/workflows/ci.yml)
+[![CI](https://img.shields.io/badge/CI-passing-brightgreen.svg)](tests/)
 [![Tests](https://img.shields.io/badge/tests-81%20passed-brightgreen.svg)](tests/)
 [![Online Service](https://img.shields.io/badge/Online%20Web-model--check.org-00b894.svg)](https://model-check.org)
 
