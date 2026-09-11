@@ -8,8 +8,8 @@
 [![Tests](https://img.shields.io/badge/tests-81%20passed-brightgreen.svg)](tests/)
 [![Online Service](https://img.shields.io/badge/Online%20Web-model--check.org-00b894.svg)](https://model-check.org)
 
-**极速、轻量、专业的大模型 API 渠道与中转站黑盒体检工具（LLM API Inspector）**  
-*像给 API 做一次全套“深度体检”：30 秒排查功能阉割、假冒回显、流式假死与参数异常。*
+**极速、轻量、专业的大模型 API 中转站检测工具（LLM API Inspector）**  
+*针对模型替换、模型掺水、模型降智等场景，确保买到真实的大模型API*
 
 [在线免安装体检](https://model-check.org) • [快速上手](#-快速上手) • [检测模式](#-检测模式分层) • [检测项目全景](#-检测了哪些内容29-项探针全景) • [Python SDK](#-python-sdk-使用)
 
@@ -21,10 +21,10 @@
 
 接入第三方 API 中转站或聚合网关时，很多开发者常遇到这样的困扰：
 - ❌ **“为什么我的 Cursor / Cline / NextChat 一用就报错？”** —— 表面返回 HTTP 200，但实际工具调用（Tools）或流式输出被中间件阉割。
-- ❌ **“我买的 Claude 3.5 Sonnet 是不是被套壳了？”** —— 拿廉价小模型套壳回显，或者删掉了 Prompt Caching 导致开销剧增。
+- ❌ **“我买的 Claude/openai 模型是不是被替换了？”** —— 拿廉价小模型套壳回显，或者删掉了 Prompt Caching 导致开销剧增。
 - ❌ **“这个中转商到底稳不稳？”** —— 接口报错格式混乱、Token 计费暗中虚标、视觉多模态丢包。
 
-**Model Check** 通过非侵入式的黑盒主动探测技术，在 **15 ~ 30 秒** 内下发 29 组工程级高灵敏探针，直观给出每个维度的 **通过 / 未通过 / 不适用** 结论。
+**Model Check** 通过多维度接口调用和探测，可快速或深度检测模型真假。
 
 > 🌐 **免安装在线体检**：如果你不想在本地配置环境，欢迎直接使用免费在线体检站：[**model-check.org**](https://model-check.org)
 
