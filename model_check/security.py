@@ -14,6 +14,9 @@ from urllib.parse import urlsplit, urlunsplit
 import httpx
 
 
+from model_check.config import async_timeout
+
+
 class UnsafeTargetError(ValueError):
     """目标 URL 不符合公网检测安全要求。"""
 
@@ -78,10 +81,11 @@ def _is_public_ip(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> boo
 async def resolve_public_ips(host: str, port: int = 443) -> tuple[str, ...]:
     """解析域名，要求解析结果全部为公网地址。"""
     try:
-        async with asyncio.timeout(DNS_TIMEOUT_S):
+        async with async_timeout(DNS_TIMEOUT_S):
             infos = await asyncio.get_running_loop().getaddrinfo(
                 host, port, type=socket.SOCK_STREAM
             )
+
     except (OSError, TimeoutError) as exc:
         raise UnsafeTargetError("API 域名无法解析") from exc
 

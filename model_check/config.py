@@ -1,8 +1,11 @@
-"""L1 检测核心基础配置。"""
+"""L1 检测核心基础配置与 Python 3.10 兼容层。"""
 
 from __future__ import annotations
 
+import asyncio
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+import sys
 
 
 @dataclass(frozen=True)
@@ -26,3 +29,35 @@ _DEFAULT_SETTINGS = Settings()
 
 def get_settings() -> Settings:
     return _DEFAULT_SETTINGS
+
+
+if sys.version_info >= (3, 11):
+    async_timeout = asyncio.timeout
+else:
+    @asynccontextmanager
+    async def async_timeout(delay: float):
+        """Python 3.10 兼容实现的 asyncio.timeout。"""
+        if delay is None:
+            yield
+            return
+        try:
+            loop = asyncio.get_running_loop()
+            time_fn = getattr(loop, "time", None)
+            call_at_fn = getattr(loop, "call_at", None)
+            if time_fn is None or call_at_fn is None:
+                yield
+                return
+            deadline = time_fn() + delay
+            task = asyncio.current_task()
+            handle = call_at_fn(deadline, task.cancel)
+            try:
+                yield
+            except asyncio.CancelledError:
+                if time_fn() >= deadline:
+                    raise TimeoutError() from None
+                raise
+            finally:
+                handle.cancel()
+        except Exception:
+            yield
+

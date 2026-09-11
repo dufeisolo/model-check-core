@@ -9,7 +9,7 @@ import time
 from urllib.parse import urlsplit
 
 from model_check.clients import ApiClient
-from model_check.config import Settings, get_settings
+from model_check.config import Settings, async_timeout, get_settings
 from model_check.model_profiles import resolve_model_profile
 from model_check.probes import probe_summary, run_probes
 from model_check.verdict import L1_HIGH, L1_MIN_COVERAGE, decide_l1_public
@@ -80,7 +80,7 @@ async def run_l1_detection(
     )
 
     try:
-        async with asyncio.timeout(settings.L1_TOTAL_TIMEOUT_S):
+        async with async_timeout(settings.L1_TOTAL_TIMEOUT_S):
             emit("正在识别接口协议", stage="protocol", status="running")
             protocol = await client.detect_protocol()
             logs = client.proto_probe_log()

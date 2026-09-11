@@ -14,7 +14,9 @@ from dataclasses import dataclass, replace
 from types import SimpleNamespace
 
 from model_check.clients import ApiClient, ProtocolError
+from model_check.config import async_timeout
 from model_check.model_profiles import (model_echo_matches, probe_applicability,
+
                                 resolve_model_profile)
 
 # token 审计比较时的固定开销容差（system/role 封装等结构性偏移，非数值误差）
@@ -885,7 +887,7 @@ async def run_probes(client: ApiClient, declared_model: str, settings,
             })
         if public_mode:
             try:
-                async with asyncio.timeout(settings.L1_PROBE_TIMEOUT_S):
+                async with async_timeout(settings.L1_PROBE_TIMEOUT_S):
                     r = await dispatch(client, ctx, fn)
             except TimeoutError:
                 r = ProbeResult(pid, pname, "na", "单项检测超时",
