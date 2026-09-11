@@ -4,14 +4,13 @@ version = "0.1.0"
 description = "Fast, lightweight black-box diagnostic & inspection tool for LLM API channels (L1 protocol, tools, vision, streaming)."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "Apache-2.0" }
+license = "Apache-2.0"
 authors = [
     { name = "Model Check Team", email = "contact@model-check.org" }
 ]
 keywords = ["llm", "api", "relay", "diagnostic", "anthropic", "openai", "inspector", "checker"]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Topic :: Software Development :: Testing",
 ]
