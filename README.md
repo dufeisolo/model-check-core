@@ -1,6 +1,8 @@
-# Model Check Core (`model-check`)
+
 
 <div align="center">
+  
+# Model Check Core (`model-check`)
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
