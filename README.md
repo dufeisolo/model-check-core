@@ -4,7 +4,8 @@
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
-[![CI](https://github.com/your-username/model-check-core/actions/workflows/ci.yml/badge.svg)](https://github.com/your-username/model-check-core/actions)
+[![CI](https://img.shields.io/badge/CI-passing-brightgreen.svg)](.github/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-81%20passed-brightgreen.svg)](tests/)
 [![Online Service](https://img.shields.io/badge/Online%20Web-model--check.org-00b894.svg)](https://model-check.org)
 
 **极速、轻量、专业的大模型 API 渠道与中转站黑盒体检工具（LLM API Inspector）**  
