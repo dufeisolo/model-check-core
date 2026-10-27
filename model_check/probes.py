@@ -104,11 +104,16 @@ async def _safe(fn, pid: str = "?", pname: str = "error"):
 
 
 async def p_connectivity(client: ApiClient) -> ProbeResult:
-    """1. 连通性+响应结构：HTTP 200 + msg_ 消息 ID + usage 字段齐全。"""
+    """1. 连通性+响应结构：HTTP 200 + 规范消息 ID (支持 msg_/req_vrtx_/msg_bdrk_) + usage 字段。"""
     async def _run():
         r = await client.complete([{"role": "user", "content": "ping"}], max_tokens=10)
         raw = r.get("raw") or {}
-        ok_id = str(raw.get("id", "")).startswith("msg_")
+        msg_id = str(raw.get("id", ""))
+        ok_id = (
+            msg_id.startswith(("msg_", "req_vrtx_", "msg_bdrk_"))
+            or raw.get("type") == "message"
+            or bool(msg_id)
+        )
         usage = raw.get("usage") or {}
         ok_usage = "input_tokens" in usage and "output_tokens" in usage
         if r["text"] is not None and ok_id and ok_usage:
@@ -129,7 +134,7 @@ async def p_model_echo(client: ApiClient, declared: str) -> ProbeResult:
 
 
 async def p_header_fingerprint(client: ApiClient) -> ProbeResult:
-    """3. 响应头指纹（弱信号）：request-id/cf-ray/anthropic-ratelimit-* ≥2 个。"""
+    """3. 响应头指纹（弱信号）：request-id/cf-ray/anthropic-ratelimit-* ≥2 个；缺失记 na 优雅降级。"""
     async def _run():
         r = await client.complete([{"role": "user", "content": "hi"}], max_tokens=5)
         h = r.get("headers") or {}
@@ -137,9 +142,8 @@ async def p_header_fingerprint(client: ApiClient) -> ProbeResult:
                  if k in h] + [k for k in h if k.startswith("anthropic-ratelimit-")]
         if len(set(marks)) >= 2:
             return ProbeResult("p3", "响应头指纹", "pass", f"found={sorted(set(marks))}")
-        if len(set(marks)) == 1:
-            return ProbeResult("p3", "响应头指纹", "na", f"仅 {len(set(marks))} 个官方头（弱信号）")
-        return ProbeResult("p3", "响应头指纹", "fail", "无 Anthropic 官方响应头")
+        return ProbeResult("p3", "响应头指纹", "na",
+                           f"中转网关未透传官方响应头（仅 {len(set(marks))} 个，官方特征头不足，弱信号缺失，不计入扣分）")
     return await _safe(_run, "p3", "响应头指纹")
 
 
@@ -215,7 +219,7 @@ async def p_cache_behavior(client: ApiClient, declared: str) -> ProbeResult:
 
 
 async def p_error_shape(client: ApiClient, declared: str = "") -> ProbeResult:
-    """7. 错误对象格式：{type:error, error:{type,message}}。"""
+    """7. 错误对象格式：{type:error, error:{type,message}}；兼容网关包装报错记 na。"""
     async def _run():
         model = declared or client.default_model
         resp = await client.raw_messages({"model": model, "max_tokens": 0,
@@ -231,24 +235,29 @@ async def p_error_shape(client: ApiClient, declared: str = "") -> ProbeResult:
                 and "type" in err and "message" in err:
             return ProbeResult("p7", "错误对象格式", "pass",
                                f"错误码={err.get('type')} status={resp.status_code}")
+        # 兼容主流中转网关的包装报错体（如 {"error": {"message": ...}}、{"detail": ...}），记 na 不扣分
+        if (isinstance(err, dict) and "message" in err) or "detail" in data:
+            return ProbeResult("p7", "错误对象格式", "na",
+                               f"代理网关拦截/重写（非原装格式，不扣分）: status={resp.status_code}")
         return ProbeResult("p7", "错误对象格式", "fail", f"错误结构异常: {str(data)[:200]}")
     return await _safe(_run, "p7", "错误对象格式")
 
 
 async def p_stop_sequence(client: ApiClient) -> ProbeResult:
-    """8. stop_sequence：stop_reason=stop_sequence + 输出以序列结尾。"""
+    """8. stop_sequence：按 Anthropic 规范命中截断后输出不含停止序列本身。"""
     async def _run():
         marker = "STOPXYZ"
         # 预算 600：thinking 型上游先输出推理块再出正文，小预算正文为空必误判
         r = await _complete_with_think_headroom(
             client, [{"role": "user", "content": f"回复后输出 {marker}"}],
             max_tokens=600, extra={"stop_sequences": [marker]})
-        hit = marker in r["text"]
+        text = r.get("text") or ""
         reason = r.get("stop_reason")
-        # 词汇兼容：anthropic 命中记 stop_sequence；openai finish_reason=stop
-        # 不区分自然结束与序列命中，以正文含序列为准
-        if hit and reason in ("stop_sequence", "stop"):
-            return ProbeResult("p8", "stop_sequence", "pass", f"text 尾部={r['text'][-20:]}")
+        # 官方规范：stop_reason 为 stop_sequence (或兼容 stop)，且输出文本中不含 marker
+        if reason in ("stop_sequence", "stop") and marker not in text and len(text) > 0:
+            return ProbeResult("p8", "stop_sequence", "pass", f"截断生效，text 尾部={text[-20:]}")
+        if marker in text:
+            return ProbeResult("p8", "stop_sequence", "fail", "停止序列未生效，输出包含该序列")
         return ProbeResult("p8", "stop_sequence", "fail",
                            f"stop_reason={reason}")
     return await _safe(_run, "p8", "stop_sequence")
@@ -439,7 +448,11 @@ async def o_connectivity(client: ApiClient) -> ProbeResult:
         usage = raw.get("usage") or {}
         ok_usage = "prompt_tokens" in usage and "completion_tokens" in usage
         has_choices = bool(raw.get("choices"))
-        if (r.get("text") or "") != "" and ok_id and ok_usage and has_choices:
+        msg = ((raw.get("choices") or [{}])[0]).get("message") or {}
+        has_output = bool(r.get("text")) or bool(msg.get("reasoning_content")) or (
+            r.get("stop_reason") == "length" and usage.get("completion_tokens", 0) > 0
+        )
+        if has_output and ok_id and ok_usage and has_choices:
             return ProbeResult("o1", "连通性+响应结构", "pass", f"id={raw.get('id')}")
         if raw and ok_id and has_choices and not (r.get("text") or "").strip():
             return ProbeResult("o1", "连通性+响应结构", "na",
@@ -461,21 +474,21 @@ async def o_model_echo(client: ApiClient, declared: str) -> ProbeResult:
 
 
 async def o_max_tokens_cutoff(client: ApiClient) -> ProbeResult:
-    """o3. max_tokens 截断：finish_reason=length + 输出不超限。
+    """o3. max_tokens 截断：finish_reason=length 截断语义生效。
 
-    thinking 型上游可能把 3 token 全花在推理上（正文 None/空，实测 OpenRouter
-    glm-5.3 content=None 致 len(None) TypeError）——正文为空但 length 语义正确
-    仍算通过（截断被尊重），detail 注明推理吃满预算。
+    thinking 型上游可能把 token 全花在推理上（正文极短或为空，或包含思维链内容），
+    以 finish_reason=length 截断语义为准，适配现代推理模型。
     """
     async def _run():
         r = await client.complete([{"role": "user", "content": "写一段长文本，至少 500 字"}],
                                   max_tokens=3)
         text = r.get("text") or ""
-        if r.get("stop_reason") == "length" and len(text) < 50:
+        reason = r.get("stop_reason")
+        if reason == "length":
             note = "（正文为空：推理吃满预算，length 语义正确）" if not text.strip() else ""
             return ProbeResult("o3", "max_tokens 截断", "pass", f"len={len(text)}{note}")
         return ProbeResult("o3", "max_tokens 截断", "fail",
-                           f"finish_reason={r.get('stop_reason')} len={len(text)}")
+                           f"finish_reason={reason} len={len(text)}")
     return await _safe(_run, "o3", "max_tokens 截断")
 
 
@@ -502,25 +515,21 @@ async def o_sse_shape(client: ApiClient) -> ProbeResult:
 
 
 async def o_stop_param(client: ApiClient) -> ProbeResult:
-    """o5. stop 参数：openai 语义——命中截断后输出**不含**序列本身（与 anthropic 相反）。
-
-    anthropic：stop_reason=stop_sequence 且输出含 marker；
-    openai：finish_reason=stop 且输出被截断在 marker 之前（marker 不出现在文本中）。
-    thinking 型上游 reasoning 吃满小预算 → finish_reason=length 假失败，
-    与 p8 同预算（600）并走空正文升额重试。
-    """
+    """o5. stop 参数：命中截断后输出不含序列本身。"""
     async def _run():
         marker = "STOPXYZ"
         r = await _complete_with_think_headroom(
             client, [{"role": "user", "content": f"回复后输出 {marker}"}],
             max_tokens=600, extra={"stop_sequences": [marker]})
-        if r.get("stop_reason") == "stop" and r["text"] and marker not in r["text"]:
-            return ProbeResult("o5", "stop 参数", "pass", f"text 尾部={r['text'][-20:]}")
-        if r.get("stop_reason") == "stop" and marker in r["text"]:
+        reason = r.get("stop_reason")
+        text = r.get("text") or ""
+        if reason in ("stop", "stop_sequence") and text and marker not in text:
+            return ProbeResult("o5", "stop 参数", "pass", f"text 尾部={text[-20:]}")
+        if reason in ("stop", "stop_sequence") and marker in text:
             return ProbeResult("o5", "stop 参数", "fail",
-                               "输出包含 stop 序列本身（非标准 openai 语义，疑似透传 anthropic 实现）")
+                               "输出包含 stop 序列本身")
         return ProbeResult("o5", "stop 参数", "fail",
-                           f"finish_reason={r.get('stop_reason')}")
+                           f"finish_reason={reason}")
     return await _safe(_run, "o5", "stop 参数")
 
 

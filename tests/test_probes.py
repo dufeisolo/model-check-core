@@ -71,7 +71,7 @@ def make_faithful_transport(**overrides):
                 return [{"type": "text", "text": "收到"}]
         # stop_sequence
         if body.get("stop_sequences"):
-            return [{"type": "text", "text": "这是回复 STOPXYZ"}]
+            return [{"type": "text", "text": "这是回复 "}]
         # max_tokens 截断
         if body.get("max_tokens") is not None and body["max_tokens"] <= 3:
             return [{"type": "text", "text": "截断"}]
@@ -379,10 +379,10 @@ def make_faithful_openai_transport(**overrides):
 @pytest.mark.asyncio
 async def test_openai_probes_all_pass(settings):
     """默认忠实 openai mock 下 13 个 o 探针全部 pass（o13 为 weight=0 渠道指纹）。"""
-    transport, _ = make_faithful_openai_transport()
+    transport, _ = make_faithful_openai_transport(echo_model="kimi-k3-vl")
     c = ApiClient("https://relay.example.com", "k", transport=transport,
-                  default_model="kimi-k3")
-    results = await run_probes(c, "kimi-k3", settings)
+                  default_model="kimi-k3-vl")
+    results = await run_probes(c, "kimi-k3-vl", settings)
     await c.close()
     by_id = {r.id: r for r in results}
     assert len(results) == 13

@@ -4,7 +4,7 @@ import json
 import httpx
 
 from model_check.config import get_settings
-from model_check.model_profiles import resolve_model_profile
+from model_check.model_profiles import resolve_model_profile, _contains_o_series
 from model_check.security import PublicOnlyTransport
 
 
@@ -126,6 +126,22 @@ class ApiClient:
             except Exception:
                 return False
 
+        def _anthropic_message_shape(text: str) -> bool:
+            try:
+                d = json.loads(text)
+                if not isinstance(d, dict):
+                    return False
+                if d.get("type") == "message" and isinstance(d.get("content"), list):
+                    return True
+                msg_id = str(d.get("id") or "")
+                if msg_id.startswith(("msg_", "req_vrtx_", "msg_bdrk_")):
+                    return True
+                if d.get("role") == "assistant" and ("content" in d or "usage" in d):
+                    return True
+                return False
+            except Exception:
+                return any(k in text for k in ("msg_", "req_vrtx_", "msg_bdrk_"))
+
         async def probe_anthropic() -> bool:
             try:
                 r = await self._client.post(
@@ -137,11 +153,12 @@ class ApiClient:
                 )
                 text = r.text[:2000]
                 shape_ok = _anthropic_error_shape(text)
+                msg_shape_ok = _anthropic_message_shape(text) if r.status_code == 200 else False
                 self._proto_probe_log.append(
                     {"endpoint": "/v1/messages", "status": r.status_code,
-                     "shape_ok": shape_ok})
-                return (r.status_code == 200 and "msg_" in text) or (
-                    r.status_code in (400, 401, 429) and shape_ok
+                     "shape_ok": shape_ok or msg_shape_ok})
+                return (r.status_code == 200 and msg_shape_ok) or (
+                    r.status_code in (400, 401, 403, 429) and shape_ok
                 )
             except httpx.HTTPError as e:
                 self._proto_probe_log.append(
@@ -240,7 +257,8 @@ class ApiClient:
             request_model = extra.get("model", self.default_model)
             profile = resolve_model_profile(request_model)
             token_field = "max_completion_tokens" \
-                if profile.reasoning_effort is True else "max_tokens"
+                if (profile.provider == "openai" and (profile.reasoning_effort is True or _contains_o_series(request_model))) \
+                else "max_tokens"
             body = {"model": request_model,
                     token_field: max_tokens,
                     "messages": _openai_messages(messages, extra.get("system")),

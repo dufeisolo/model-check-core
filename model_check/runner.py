@@ -38,6 +38,26 @@ def _incomplete(code: str, message: str, started_at: float) -> dict:
     }
 
 
+def public_reason(item) -> str:
+    """按 PRD 规范将探针执行结果映射至四态诊断状态：
+    - verified: 测试通过
+    - behavior_mismatch: 行为不匹配 (Fail)
+    - model_not_applicable: 该模型不适用 (N/A)
+    - proxy_signal_missing: 中转代理特征缺失/剥离 (na)
+    """
+    if item.status == "pass":
+        return "verified"
+    if item.status == "fail":
+        return "behavior_mismatch"
+    if not item.applicable:
+        return "model_not_applicable"
+    if item.id in ("p3", "p7"):
+        return "proxy_signal_missing"
+    if item.error_code:
+        return "request_unavailable"
+    return "proxy_signal_missing"
+
+
 async def run_l1_detection(
     request: L1DetectionRequest,
     progress=None,
